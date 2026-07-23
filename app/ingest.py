@@ -8,8 +8,8 @@ load_dotenv()
 
 API_KEY = os.getenv("API_KEY")
 
-def fetch_weather():
-    city = "Toronto"
+def fetch_weather(city: str):
+    
     url = f"http://api.openweathermap.org/data/2.5/weather?q={city}&appid={API_KEY}"
 
     response = requests.get(url)
@@ -33,7 +33,7 @@ def load_data(df):
     df.to_sql("weather_data", engine, if_exists="append", index=False)
 
 
-def run_pipeline():
-    data = fetch_weather()
+def run_pipeline(city: str):
+    data = fetch_weather(city)
     df = transform_data(data)
     load_data(df)

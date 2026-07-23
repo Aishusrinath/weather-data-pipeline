@@ -8,6 +8,6 @@ def home():
     return {"message": "Weather Data Pipeline API"}
 
 @app.post("/ingest")
-def ingest():
-    run_pipeline()
-    return {"status": "Data ingested successfully"}
+def ingest(city: str):
+    run_pipeline(city)
+    return {"status": f"Data ingested for {city}"}
