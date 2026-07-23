@@ -9,18 +9,26 @@ load_dotenv()
 API_KEY = os.getenv("API_KEY")
 
 def fetch_weather(city: str):
-    
-    url = f"http://api.openweathermap.org/data/2.5/weather?q={city}&appid={API_KEY}"
+
+    url = f"http://api.openweathermap.org/data/2.5/weather?q={city}&appid={API_KEY}&units=metric"
 
     response = requests.get(url)
+
+    response.raise_for_status()
+
     data = response.json()
+
+    print("API RESPONSE:", data)
 
     return data
 
 
 def transform_data(data):
+    if data.get("cod") != 200:
+        raise ValueError(f"Weather API failed: {data}")
+
     df = pd.DataFrame([{
-        "city": data["name"],
+        "city": data.get("name"),
         "temperature": data["main"]["temp"],
         "humidity": data["main"]["humidity"],
         "weather": data["weather"][0]["description"]
@@ -28,10 +36,12 @@ def transform_data(data):
 
     return df
 
-
 def load_data(df):
-    df.to_sql("weather_data", engine, if_exists="append", index=False)
-
+    try:
+        df.to_sql("weather_data", engine, if_exists="append", index=False)
+    except Exception as e:
+        print("DB ERROR:", e)
+        raise
 
 def run_pipeline(city: str):
     data = fetch_weather(city)
