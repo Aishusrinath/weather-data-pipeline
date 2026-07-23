@@ -49,3 +49,5 @@ def run_pipeline(city: str):
     data = fetch_weather(city)
     df = transform_data(data)
     load_data(df)
+
+    return data

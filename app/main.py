@@ -9,8 +9,14 @@ def home():
 
 @app.post("/ingest")
 def ingest(city: str):
+
     try:
-        run_pipeline(city)
-        return {"status": f"Data ingested for {city}"}
+        data = run_pipeline(city)
+
+        return {
+            "status": "Data ingested successfully",
+            "data": data
+        }
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
