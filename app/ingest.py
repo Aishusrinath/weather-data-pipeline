@@ -4,11 +4,14 @@ import os
 from dotenv import load_dotenv
 from app.db import engine
 
+
+from app.s3 import upload_weather_to_s3
+
 load_dotenv(override=True)
 
 API_KEY = os.getenv("API_KEY")
 
-print("LOADED API KEY:", API_KEY)
+# print("LOADED API KEY:", API_KEY)
 
 def fetch_weather(city: str):
 
@@ -19,6 +22,10 @@ def fetch_weather(city: str):
     response.raise_for_status()
 
     data = response.json()
+
+    s3_key = upload_weather_to_s3(data)
+
+    print(f"Uploaded to S3: {s3_key}")
 
     print("API RESPONSE:", data)
 
