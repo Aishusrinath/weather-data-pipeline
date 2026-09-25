@@ -11,7 +11,6 @@ load_dotenv(override=True)
 
 API_KEY = os.getenv("API_KEY")
 
-# print("LOADED API KEY:", API_KEY)
 
 def fetch_weather(city: str):
 
