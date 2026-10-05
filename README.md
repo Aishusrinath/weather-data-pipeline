@@ -1,10 +1,8 @@
 \# AWS Weather Data Engineering Pipeline
 
+An end-to-end AWS data engineering project that ingests weather data from the OpenWeather API, stores raw events in an Amazon S3 data lake, validates and transforms new objects using AWS Lambda, catalogs datasets with AWS Glue, performs PySpark ETL using AWS Glue, stores an analytics-ready curated layer in Snappy-compressed Parquet, and queries the data using Amazon Athena.
 
-
-An end-to-end AWS data engineering project that ingests weather data from the OpenWeather API, stores raw data in an Amazon S3 data lake, processes new objects using AWS Lambda, catalogs processed data with AWS Glue, and performs serverless SQL analytics using Amazon Athena.
-
-
+The project implements a layered data-lake architecture with `raw/`, `processed/`, `rejected/`, and `curated/` zones. The curated layer is partitioned by `year/month/day` and optimized for analytical workloads.
 
 The project also includes a FastAPI ingestion endpoint and PostgreSQL integration for relational persistence.
 
@@ -16,113 +14,83 @@ The project also includes a FastAPI ingestion endpoint and PostgreSQL integratio
 
 ```text
 
-&#x20;                   OpenWeather API
-
-&#x20;                          |
-
-&#x20;                          v
-
-&#x20;                   Python / FastAPI
-
-&#x20;                     /          \\
-
-&#x20;                    v            v
-
-&#x20;              PostgreSQL      Amazon S3
-
-&#x20;                               raw/
-
-&#x20;                                 |
-
-&#x20;                          S3 ObjectCreated
-
-&#x20;                                 |
-
-&#x20;                                 v
-
-&#x20;                            AWS Lambda
-
-&#x20;                        Validation + Transform
-
-&#x20;                          /             \\
-
-&#x20;                         v               v
-
-&#x20;                   processed/        rejected/
-
-&#x20;                         |
-
-&#x20;                         v
-
-&#x20;                   AWS Glue Crawler
-
-&#x20;                         |
-
-&#x20;                         v
-
-&#x20;                  Glue Data Catalog
-
-&#x20;                         |
-
-&#x20;                         v
-
-&#x20;                   Amazon Athena
-
-&#x20;                         |
-
-&#x20;                         v
-
-&#x20;                  SQL Analytics
-
-&#x20;                         |
-
-&#x20;                         v
-
-&#x20;                athena-results/
-
-```
-
-
-
+&#x20;                                      OpenWeather API
+                           |
+                           v
+                    Python / FastAPI
+                      /          \
+                     v            v
+               PostgreSQL      Amazon S3
+                                raw/
+                                  |
+                           S3 ObjectCreated
+                                  |
+                                  v
+                             AWS Lambda
+                         Validate + Transform
+                           /             \
+                          v               v
+                    processed/        rejected/
+                          |
+                          v
+                 AWS Glue Crawler
+                          |
+                          v
+                 Glue Data Catalog
+                  processed table
+                          |
+                          v
+                  AWS Glue PySpark ETL
+                          |
+                          v
+                    Amazon S3
+                     curated/
+               Snappy Parquet files
+                          |
+                 year/month/day
+                    partitions
+                          |
+                          v
+                 AWS Glue Crawler
+                          |
+                          v
+                 Glue Data Catalog
+                   curated table
+                          |
+                          v
+                    Amazon Athena
+                          |
+                          v
+                    SQL Analytics
 \## Project Features
 
 
 
-\- Extracts current weather data from the OpenWeather API
+## Project Features
 
-\- Provides a FastAPI endpoint for ingestion
-
-\- Transforms API responses using Python and Pandas
-
-\- Stores relational weather records in PostgreSQL
-
-\- Stores original API responses in an Amazon S3 raw data layer
-
-\- Partitions S3 objects by `year/month/day`
-
-\- Uses an S3 `ObjectCreated` event to trigger AWS Lambda
-
-\- Validates incoming weather JSON before processing
-
-\- Routes valid records to the `processed/` data layer
-
-\- Routes invalid records to the `rejected/` data layer
-
-\- Records UTC processing and rejection timestamps
-
-\- Logs accepted/rejected processing counts to CloudWatch Logs
-
-\- Uses AWS Glue Crawler to discover schema and partitions
-
-\- Registers processed data in the AWS Glue Data Catalog
-
-\- Queries the S3 data lake using Amazon Athena
-
-\- Includes partition-filtered and analytical SQL queries
-
-\- Uses S3 lifecycle configuration for the raw data layer
-
-
+- Extracts current weather data from the OpenWeather API
+- Provides a FastAPI endpoint for ingestion
+- Transforms API responses using Python and Pandas
+- Stores relational weather records in PostgreSQL
+- Stores original API responses in an Amazon S3 `raw/` data layer
+- Partitions S3 objects by `year/month/day`
+- Uses an S3 `ObjectCreated` event to trigger AWS Lambda
+- Validates incoming weather JSON before processing
+- Routes valid records to the `processed/` data layer
+- Routes invalid records to the `rejected/` data layer
+- Records UTC processing and rejection timestamps
+- Logs accepted/rejected processing counts to CloudWatch Logs
+- Uses AWS Glue Crawler to discover processed JSON schema and partitions
+- Registers processed data in the AWS Glue Data Catalog
+- Uses an AWS Glue 5.1 PySpark ETL job to transform processed JSON into an analytics-ready curated dataset
+- Casts analytical fields to appropriate data types and converts `processed_at` to a timestamp
+- Writes curated data as Snappy-compressed Parquet
+- Partitions the curated layer by `year/month/day`
+- Uses a second Glue Crawler to catalog the curated Parquet dataset
+- Queries both processed and curated data using Amazon Athena
+- Includes partition-filtered and aggregation SQL queries
+- Uses S3 lifecycle configuration for the raw data layer
+- Uses scoped IAM service roles for Lambda, Glue Crawlers, and Glue ETL
 
 \## Technology Stack
 
@@ -169,50 +137,49 @@ The project also includes a FastAPI ingestion endpoint and PostgreSQL integratio
 \- AWS IAM
 
 
-
-\## S3 Data Lake Design
-
-
+## S3 Data Lake Design
 
 The S3 bucket is logically separated into the following prefixes:
 
-
-
 ```text
-
 raw/
-
 processed/
-
 rejected/
-
+curated/
 athena-results/
-
 ```
 
+Each prefix represents a different stage of the data pipeline:
 
+- `raw/` — original OpenWeather API responses
+- `processed/` — validated and transformed JSON records produced by Lambda
+- `rejected/` — invalid records with rejection metadata
+- `curated/` — analytics-ready Snappy-compressed Parquet produced by AWS Glue ETL
+- `athena-results/` — Athena query result files
 
-Weather API responses are stored using date-based partitioning:
-
-
+Raw weather API responses are stored using date-based partitioning:
 
 ```text
-
 raw/
-
 └── year=YYYY/
-
-&#x20;   └── month=MM/
-
-&#x20;       └── day=DD/
-
-&#x20;           └── weather\_YYYYMMDD\_HHMMSS.json
-
+    └── month=MM/
+        └── day=DD/
+            └── weather_YYYYMMDD_HHMMSS.json
 ```
 
+The Lambda function preserves this partition structure when writing records to `processed/` or `rejected/`.
 
+The Glue ETL job reads the cataloged `processed` dataset and writes the curated analytical layer as Parquet:
 
-The Lambda function preserves the partition structure when writing valid records to `processed/` and invalid records to `rejected/`.
+```text
+curated/
+└── year=YYYY/
+    └── month=MM/
+        └── day=DD/
+            └── part-*.snappy.parquet
+```
+
+The partition values in the curated layer are inherited from the source `processed` dataset. They represent the source ingestion partition and are therefore distinct from `processed_at`, which records when Lambda processed the record.
 
 
 
@@ -312,105 +279,114 @@ day
 
 The actual weather records remain in S3; the Glue Data Catalog stores metadata used by analytical services such as Athena.
 
+## AWS Glue PySpark ETL
 
+The integration phase adds an AWS Glue 5.1 Spark ETL job named `weather-curated-etl`.
 
-\## Amazon Athena Analytics
+The job reads the `processed` table from the AWS Glue Data Catalog and performs the following transformations:
 
+1. Selects the analytical weather fields.
+2. Casts `temperature` to `double`.
+3. Casts `humidity` to `int`.
+4. Filters records with null values in required analytical fields.
+5. Converts `processed_at` from a string to a Spark timestamp.
+6. Writes the result as partitioned Parquet to the S3 `curated/` layer.
 
-
-Amazon Athena queries the processed S3 data using the Glue Data Catalog table.
-
-
-
-Example partition-aware query:
-
-
-
-```sql
-
-SELECT
-
-&#x20;   city,
-
-&#x20;   temperature,
-
-&#x20;   humidity,
-
-&#x20;   weather,
-
-&#x20;   year,
-
-&#x20;   month,
-
-&#x20;   day
-
-FROM weather\_data\_catalog.processed
-
-WHERE year = '2026'
-
-&#x20; AND month = '09';
-
-```
-
-
-
-Example aggregation:
-
-
-
-```sql
-
-SELECT
-
-&#x20;   city,
-
-&#x20;   ROUND(AVG(temperature), 2) AS avg\_temperature,
-
-&#x20;   ROUND(AVG(humidity), 2) AS avg\_humidity,
-
-&#x20;   COUNT(\*) AS observations
-
-FROM weather\_data\_catalog.processed
-
-GROUP BY city
-
-ORDER BY city;
-
-```
-
-
-
-The project also demonstrates conversion of ISO-8601 strings for time-based analysis:
-
-
-
-```sql
-
-SELECT
-
-&#x20;   city,
-
-&#x20;   processed\_at,
-
-&#x20;   from\_iso8601\_timestamp(processed\_at) AS processed\_timestamp
-
-FROM weather\_data\_catalog.processed;
-
-```
-
-
-
-Additional queries are available in:
-
-
+The output is partitioned by:
 
 ```text
-
-sql/athena\_queries.sql
-
+year
+month
+day
 ```
 
+Spark writes the Parquet output using Snappy compression.
 
+A second Glue Crawler, `weather-curated-crawler`, scans the curated S3 layer and registers:
+
+```text
+Database: weather_data_catalog
+Table: curated
+```
+
+The resulting curated schema contains:
+
+```text
+city            string
+temperature     double
+humidity        int
+weather         string
+processed_at    timestamp
+year            string    partition key
+month           string    partition key
+day             string    partition key
+```
+
+The deployed ETL job was successfully executed and the resulting Parquet objects, catalog table, schema, and partitions were verified before querying the curated dataset with Athena.
+
+## Amazon Athena Analytics
+
+Amazon Athena queries both the processed JSON dataset and the curated Parquet dataset through the AWS Glue Data Catalog.
+
+The curated table is the preferred analytical layer because it stores typed, columnar Parquet data partitioned by `year/month/day`.
+
+### Query curated weather records
+
+```sql
+SELECT
+    city,
+    temperature,
+    humidity,
+    weather,
+    processed_at,
+    year,
+    month,
+    day
+FROM weather_data_catalog.curated
+ORDER BY processed_at DESC
+LIMIT 10;
+```
+
+### Partition-aware query
+
+Partition predicates allow Athena to restrict the query to relevant S3 partitions:
+
+```sql
+SELECT
+    city,
+    temperature,
+    humidity,
+    weather,
+    processed_at
+FROM weather_data_catalog.curated
+WHERE year = '2026'
+  AND month = '09'
+  AND day = '02';
+```
+
+This query was tested successfully and returned the record stored in the selected partition.
+
+### Analytical aggregation
+
+```sql
+SELECT
+    city,
+    ROUND(AVG(temperature), 2) AS avg_temperature,
+    ROUND(AVG(humidity), 2) AS avg_humidity,
+    COUNT(*) AS record_count
+FROM weather_data_catalog.curated
+GROUP BY city
+ORDER BY city;
+```
+
+The aggregation was tested successfully against the curated Parquet dataset.
+
+Additional Athena queries are stored in:
+
+```text
+sql/athena_queries.sql
+sql/curated_queries.sql
+```
 
 \## Data Quality and Failure Handling
 
@@ -476,23 +452,18 @@ Key practices include:
 
 
 
-\- IAM user for development operations
-
-\- Dedicated Lambda execution role
-
-\- Dedicated Glue crawler service role
-
-\- Scoped S3 permissions for service roles
-
-\- `iam:PassRole` granted only where required
-
-\- Environment secrets stored outside source control
-
-\- `.env` excluded from Git
-
-\- `.env.example` used as a configuration template
-
-
+- IAM user for development operations
+- Dedicated Lambda execution role
+- Dedicated Glue crawler service role
+- Dedicated Glue ETL service role
+- Least-privilege S3 permissions scoped to required prefixes
+- Lambda reads from `raw/` and writes only to `processed/` and `rejected/`
+- Glue Crawler reads only the datasets it needs to catalog
+- Glue ETL reads from `processed/` and writes to `curated/`
+- `iam:PassRole` granted only for required service roles
+- Environment secrets stored outside source control
+- `.env` excluded from Git
+- `.env.example` used as a configuration template
 
 AWS access keys and application secrets must never be committed to this repository.
 
@@ -520,7 +491,15 @@ Athena query efficiency depends heavily on the amount of data scanned. Queries s
 
 The current project uses JSON because it keeps the learning pipeline simple. A future production optimization would convert processed records to a columnar format such as Parquet to reduce scan volume for analytical workloads.
 
+### Athena and Parquet
 
+Athena query efficiency depends on the amount of data scanned. Queries should select only required columns and use partition predicates whenever appropriate.
+
+The pipeline retains JSON in the `processed/` layer for validation and intermediate processing, while the `curated/` analytical layer uses Snappy-compressed Parquet.
+
+Parquet provides a columnar representation that allows analytical engines such as Athena to read only required columns rather than scanning complete JSON records. Combined with `year/month/day` partitioning, this design is intended to reduce unnecessary data scanning as the dataset grows.
+
+Because the current learning dataset is very small, scan-size comparisons between JSON and Parquet are not representative of production-scale cost savings.
 
 \### S3 lifecycle
 
@@ -540,6 +519,15 @@ Because individual weather JSON objects in this learning project are extremely s
 
 The Lambda function currently runs successfully with a small memory allocation. Memory, execution duration, and workload characteristics should be measured together before selecting production settings.
 
+### AWS Glue ETL
+
+AWS Glue Spark ETL uses provisioned processing capacity while a job is running, so ETL runs are performed intentionally rather than unnecessarily repeating jobs during development.
+
+The verified integration run used two G.1X workers, completed successfully in approximately one minute, and consumed approximately 0.036111 DPU-hours.
+
+For a production workload, job duration, worker type, worker count, partition strategy, and incremental processing should be monitored and tuned together.
+
+The current learning implementation uses an overwrite write mode for the curated layer. A production implementation could use incremental processing, job bookmarks, append/upsert strategies, or another appropriate data-management pattern to avoid rewriting the full curated dataset.
 
 
 \## What Broke and How I Fixed It
@@ -640,7 +628,17 @@ athena-results/
 
 prefix to keep analytical query outputs separate from source datasets.
 
+### Curated crawler S3 permissions
 
+The existing Glue crawler service role originally had permission to read only the `processed/` prefix. When the curated Parquet crawler was introduced, the role also needed access to the `curated/` layer.
+
+**Resolution:** Extended the crawler role's scoped S3 permissions to list and read both `processed/` and `curated/` while avoiding broad bucket-wide S3 permissions.
+
+### Streaming service availability
+
+The planned streaming extension using Amazon Kinesis could not be deployed in the current AWS account configuration.
+
+**Resolution:** Kept Kinesis as a future streaming extension and completed the integration project using the existing FastAPI/OpenWeather ingestion path, Lambda, S3, Glue Data Catalog, Glue PySpark ETL, Parquet, and Athena. This keeps the repository accurate about what was actually implemented and tested.
 
 \## Local Setup
 
@@ -699,56 +697,34 @@ The ingestion endpoint can then be used to request weather ingestion for a city.
 \## Project Structure
 
 
-
-```text
-
 datapipeline-project/
-
 ├── app/
-
 │   ├── db.py
-
 │   ├── ingest.py
-
 │   ├── main.py
-
 │   └── s3.py
-
 │
-
 ├── lambda/
-
-│   └── weather\_processor/
-
-│       └── lambda\_function.py
-
+│   └── weather_processor/
+│       └── lambda_function.py
 │
-
+├── glue/
+│   └── weather_etl/
+│       └── weather_etl.py
+│
 ├── sql/
-
 │   ├── queries.sql
-
-│   └── athena\_queries.sql
-
+│   ├── athena_queries.sql
+│   └── curated_queries.sql
 │
-
 ├── tests/
-
 │   └── fixtures/
-
 │       └── invalid-weather.json
-
 │
-
 ├── .env.example
-
 ├── .gitignore
-
 ├── README.md
-
 └── requirements.txt
-
-```
 
 
 
@@ -756,20 +732,15 @@ datapipeline-project/
 
 
 
-\- Convert the processed analytical layer from JSON to Parquet
-
-\- Add automated unit and integration tests
-
-\- Add infrastructure as code using AWS CloudFormation or Terraform
-
-\- Add CI/CD for automated testing and deployment
-
-\- Add data-quality metrics and alerting
-
-\- Add dashboards for weather analytics
-
-\- Evaluate streaming ingestion when Kinesis access is available
-
+- Add automated unit and integration tests
+- Add infrastructure as code using AWS CloudFormation or Terraform
+- Add CI/CD for automated testing and deployment
+- Add data-quality metrics and alerting
+- Add dashboards for weather analytics
+- Replace full curated-layer overwrite processing with incremental ETL
+- Evaluate AWS Glue job bookmarks for incremental processing
+- Address the small-files problem through compaction as data volume grows
+- Evaluate streaming ingestion with Amazon Kinesis when service access is available
 
 
 \## Key Learning Outcomes
@@ -780,26 +751,21 @@ This project demonstrates hands-on experience with:
 
 
 
-\- REST API ingestion
-
-\- Python ETL development
-
-\- Relational persistence
-
-\- S3 data lake organization
-
-\- Event-driven processing
-
-\- Data validation and rejected-record handling
-
-\- AWS IAM and service roles
-
-\- AWS Glue metadata discovery
-
-\- Serverless SQL analytics with Athena
-
-\- Partition-aware querying
-
-\- CloudWatch-based debugging
-
-\- AWS cost-awareness
+- REST API ingestion
+- Python and Pandas data transformation
+- FastAPI application development
+- Relational persistence with PostgreSQL
+- S3 data lake organization
+- Layered `raw/`, `processed/`, `rejected/`, and `curated/` data design
+- Event-driven processing with S3 and Lambda
+- Data validation and rejected-record handling
+- AWS IAM and least-privilege service roles
+- AWS Glue Crawlers and Data Catalog
+- PySpark ETL development with AWS Glue
+- JSON-to-Parquet analytical transformation
+- Snappy-compressed Parquet storage
+- Partitioned data-lake design
+- Serverless SQL analytics with Amazon Athena
+- Partition-aware querying and aggregation
+- CloudWatch-based debugging
+- AWS cost-awareness and ETL capacity considerations
